@@ -57,12 +57,6 @@ async function getTableInfo(table) {
 
 // Create tables
 db.serialize(async () => {
-  await run(`DROP TABLE IF EXISTS houses`);
-  await run(`DROP TABLE IF EXISTS house_images`);
-  await run(`DROP TABLE IF EXISTS feedback`);
-  await run(`DROP TABLE IF EXISTS brokers`);
-  await run(`DROP TABLE IF EXISTS broker_requests`);
-  await run(`DROP TABLE IF EXISTS broker_request_images`);
   await run(`CREATE TABLE IF NOT EXISTS houses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -78,8 +72,7 @@ db.serialize(async () => {
     amenities_json TEXT,
     admin_json TEXT,
     title_json TEXT,
-    description_json TEXT,
-    image TEXT
+    description_json TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS house_images (
@@ -267,14 +260,10 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
       description_ti,
     } = req.body;
     const images = (req.files || []).map((f) => f.filename);
-    const firstImage = images.length > 0 ? images[0] : null;
     if (!title || !description || !price || images.length === 0) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Title, description, price and at least one image are required.",
-        });
+      return res.status(400).json({
+        error: "Title, description, price and at least one image are required.",
+      });
     }
     const toBool = (val) =>
       typeof val !== "undefined" &&
@@ -325,7 +314,6 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
       "admin_json",
       "title_json",
       "description_json",
-      "image",
     ];
     const vals = [
       title,
@@ -342,7 +330,6 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
       JSON.stringify(admin),
       title_json,
       description_json,
-      firstImage,
     ];
     const placeholders = cols.map(() => "?").join(",");
     const result = await run(
@@ -383,16 +370,16 @@ app.put("/api/houses/:id", upload.array("images", 10), async (req, res) => {
     const existing = await get(`SELECT * FROM houses WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ error: "House not found." });
     const {
-      title = existing.title,
-      description = existing.description,
-      price = existing.price,
-      square_meter = existing.square_meter,
-      bedrooms = existing.bedrooms,
-      location = existing.location,
-      city = existing.city,
-      type = existing.type,
-      status = existing.status,
-      floor = existing.floor,
+      title,
+      description,
+      price,
+      square_meter,
+      bedrooms,
+      location,
+      city,
+      type,
+      status,
+      floor,
       title_en,
       title_am,
       title_ti,
@@ -417,23 +404,13 @@ app.put("/api/houses/:id", upload.array("images", 10), async (req, res) => {
       security: toBool(req.body.amenity_security),
       lift: toBool(req.body.amenity_lift),
     };
-    const updatedAdmin = (() => {
-      const existingAdmin = (() => {
-        try {
-          return existing.admin_json ? JSON.parse(existing.admin_json) : {};
-        } catch (e) {
-          console.error('Error parsing existing admin_json', e);
-          return {};
-        }
-      })();
-      return {
-        ...existingAdmin,
-        name: (req.body.admin_name || "").trim() || null,
-        email: (req.body.admin_email || "").trim() || null,
-        phone: (req.body.admin_phone || "").trim() || null,
-        status: "online",
-      };
-    })();
+    const updatedAdmin = {
+      ...(existing.admin_json ? JSON.parse(existing.admin_json) : {}),
+      name: (req.body.admin_name || "").trim() || null,
+      email: (req.body.admin_email || "").trim() || null,
+      phone: (req.body.admin_phone || "").trim() || null,
+      status: "online",
+    };
     const title_json = JSON.stringify({
       en: (title_en || title || "").toString(),
       am: (title_am || "").toString(),
@@ -639,12 +616,10 @@ app.post(
       const images = (req.files || []).map((f) => f.filename);
 
       if (!title || !description || !price || images.length === 0) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "Title, description, price and at least one image are required.",
-          });
+        return res.status(400).json({
+          error:
+            "Title, description, price and at least one image are required.",
+        });
       }
 
       // Parse amenities
