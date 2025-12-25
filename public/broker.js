@@ -37,6 +37,9 @@
   }
 
   function setApprovalState(state) {
+    const loginSection = document.getElementById("broker-login-section");
+    const contentSection = document.getElementById("broker-content-section");
+
     if (!approvalBadge || !approvalHelp) return;
     if (state === "approved") {
       approvalBadge.textContent = "Approved";
@@ -45,8 +48,16 @@
       approvalHelp.classList.add("alert-success");
       approvalHelp.textContent =
         "You are logged in as broker. You can submit listings.";
+
+      // Hide login, show content
+      if (loginSection) loginSection.style.display = "none";
+      if (contentSection) {
+        contentSection.classList.remove("col-lg-9");
+        contentSection.classList.add("col-lg-12");
+      }
       if (listingCard) listingCard.style.display = "";
       if (requestsCard) requestsCard.style.display = "";
+
       listingForm &&
         listingForm
           .querySelectorAll("input,textarea,select,button")
@@ -57,8 +68,16 @@
       approvalHelp.classList.remove("alert-success");
       approvalHelp.classList.add("alert-info");
       approvalHelp.textContent = "Enter username and password to login.";
+
+      // Show login, hide content forms but keep section structure
+      if (loginSection) loginSection.style.display = "block";
+      if (contentSection) {
+        contentSection.classList.remove("col-lg-12");
+        contentSection.classList.add("col-lg-9");
+      }
       if (listingCard) listingCard.style.display = "none";
       if (requestsCard) requestsCard.style.display = "none";
+
       listingForm &&
         listingForm
           .querySelectorAll("input,textarea,select,button")
@@ -89,27 +108,42 @@
       }
       const html = rows
         .map((r) => {
-          const statusBadge =
-            r.status === "approved"
-              ? '<span class="badge bg-success">Approved</span>'
-              : r.status === "rejected"
-              ? '<span class="badge bg-danger">Rejected</span>'
-              : '<span class="badge bg-warning text-dark">Pending</span>';
+          let statusBadge;
+          if (r.status === "approved") {
+            statusBadge = '<span class="badge bg-success">Approved</span>';
+          } else if (r.status === "rejected") {
+            statusBadge = '<span class="badge bg-danger">Rejected</span>';
+          } else {
+            statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+          }
+
+          let actionsHtml = '';
+          if (r.status === 'approved' && r.created_house_id) {
+            actionsHtml = `
+                <div class="mt-2 text-end">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="window.editBrokerHouse(${r.created_house_id}, ${JSON.stringify(r).replace(/"/g, '&quot;')})">
+                        <i class="fa-solid fa-pen"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="window.deleteBrokerHouse(${r.created_house_id})">
+                        <i class="fa-solid fa-trash"></i> Delete
+                    </button>
+                </div>`;
+          }
+
           return `<div class="col-md-6">
           <div class="border rounded p-2 h-100">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <strong>${r.title}</strong>
               ${statusBadge}
             </div>
-            <div class="small text-muted mb-1">${r.type || "N/A"} • ${
-            r.city || ""
-          } ${r.location || "N/A"}</div>
+            <div class="small text-muted mb-1">${r.type || "N/A"} • ${r.city || ""
+            } ${r.location || "N/A"}</div>
             <div class="small text-primary fw-semibold mb-1">${(
               Number(r.price) || 0
             ).toLocaleString("en-US")} Birr</div>
-            <div class="small text-muted">${
-              r.admin_note ? "Admin: " + r.admin_note : ""
+            <div class="small text-muted">${r.admin_note ? "Admin: " + r.admin_note : ""
             }</div>
+            ${actionsHtml}
           </div>
         </div>`;
         })
@@ -119,6 +153,113 @@
       requestsList.innerHTML =
         '<div class="col-12 text-danger">Failed to load your requests.</div>';
     }
+  }
+
+  // Edit / Delete Logic
+  window.editBrokerHouse = function (houseId, requestData) {
+    if (!houseId) return;
+    // Populate modal
+    const form = document.getElementById('broker-edit-form');
+    if (!form) return;
+
+    form.elements['house_id'].value = houseId;
+    form.elements['title'].value = requestData.title || '';
+    form.elements['type'].value = (requestData.type || 'house').toLowerCase();
+    form.elements['description'].value = requestData.description || '';
+    form.elements['price'].value = requestData.price || '';
+    form.elements['square_meter'].value = requestData.square_meter || '';
+    form.elements['bedrooms'].value = requestData.bedrooms || '';
+    form.elements['city'].value = requestData.city || '';
+    form.elements['floor'].value = requestData.floor || '';
+
+    // Localized fields
+    form.elements['title_am'].value = requestData.title_am || '';
+    form.elements['title_ti'].value = requestData.title_ti || '';
+    form.elements['description_am'].value = requestData.description_am || '';
+    form.elements['description_ti'].value = requestData.description_ti || '';
+
+    // Amenities parsing
+    let amenities = {};
+    try { amenities = JSON.parse(requestData.amenities_json || '{}'); } catch (e) { }
+
+    form.elements['amenity_water'].checked = !!amenities.water;
+    form.elements['amenity_electricity'].checked = !!amenities.electricity;
+    form.elements['amenity_internet'].checked = !!amenities.internet;
+    form.elements['amenity_parking'].checked = !!amenities.parking;
+    form.elements['amenity_lift'].checked = !!amenities.lift;
+
+    // Type change trigger
+    const typeSelect = document.getElementById('broker-edit-type-select');
+    const aptOptions = document.getElementById('broker-edit-apartment-options');
+    const bedGroup = document.getElementById('broker-edit-bedrooms-group');
+
+    const updateVisibility = () => {
+      const val = typeSelect.value;
+      if (aptOptions) aptOptions.style.display = val === 'apartment' ? 'block' : 'none';
+      if (bedGroup) bedGroup.style.display = val === 'land' ? 'none' : 'block';
+    };
+
+    if (typeSelect) {
+      typeSelect.onchange = updateVisibility;
+      updateVisibility();
+    }
+
+    new bootstrap.Modal(document.getElementById('brokerEditModal')).show();
+  };
+
+  window.deleteBrokerHouse = async function (houseId) {
+    if (!confirm('Are you sure you want to delete this property? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/broker/houses/${houseId}`, {
+        method: 'DELETE',
+        headers: { 'x-broker-token': brokerToken }
+      });
+      if (!res.ok) throw new Error('Failed');
+      alert('Property deleted.');
+      loadRequests();
+    } catch (e) {
+      alert('Failed to delete property.');
+      console.error(e);
+    }
+  };
+
+  const editForm = document.getElementById('broker-edit-form');
+  if (editForm) {
+    editForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const formData = new FormData(editForm);
+      const houseId = formData.get('house_id');
+      // Convert FormData to JSON since we don't handle file uploads here (yet?) and it's PUT
+      const data = Object.fromEntries(formData.entries());
+
+      // Boolean amenities
+      const amenities = {
+        water: formData.get('amenity_water') === 'on',
+        electricity: formData.get('amenity_electricity') === 'on',
+        internet: formData.get('amenity_internet') === 'on',
+        parking: formData.get('amenity_parking') === 'on',
+        lift: formData.get('amenity_lift') === 'on'
+      };
+      data.amenities_json = JSON.stringify(amenities);
+
+      try {
+        const res = await fetch(`/api/broker/houses/${houseId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-broker-token': brokerToken
+          },
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed');
+        alert('Property updated successfully.');
+        bootstrap.Modal.getInstance(document.getElementById('brokerEditModal')).hide();
+        loadRequests();
+      } catch (e) {
+        console.error(e);
+        alert('Failed to update property.');
+      }
+    });
   }
 
   if (authForm) {
@@ -198,4 +339,9 @@
   // Initial state
   setApprovalState(brokerToken ? "approved" : "none");
   if (brokerToken) loadRequests();
+
+  // Auto-refresh
+  setInterval(() => {
+    if (brokerToken) loadRequests();
+  }, 3000);
 })();

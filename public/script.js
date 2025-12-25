@@ -99,8 +99,8 @@ function createHouseCard(house) {
     house.images && house.images.length
       ? house.images
       : house.image
-      ? [house.image]
-      : ["noimage.png"];
+        ? [house.image]
+        : ["noimage.png"];
   const hasMultipleImages = images.length > 1;
   const status = (house.status || "available").toLowerCase();
 
@@ -110,8 +110,7 @@ function createHouseCard(house) {
     const indicators = images
       .map(
         (_, index) =>
-          `<button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${index}" ${
-            index === 0 ? 'class="active" aria-current="true"' : ""
+          `<button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${index}" ${index === 0 ? 'class="active" aria-current="true"' : ""
           } aria-label="Slide ${index + 1}"></button>`
       )
       .join("");
@@ -119,8 +118,7 @@ function createHouseCard(house) {
       .map(
         (img, index) =>
           `<div class="carousel-item ${index === 0 ? "active" : ""}">
-        <img src="/uploads/${img}" class="d-block w-100 card-img-top" alt="House image ${
-            index + 1
+        <img src="/uploads/${img}" class="d-block w-100 card-img-top" alt="House image ${index + 1
           }" style="height:200px;object-fit:cover;">
       </div>`
       )
@@ -149,35 +147,64 @@ function createHouseCard(house) {
     imageContent = `<img src="/uploads/${images[0]}" class="card-img-top" alt="House image" style="height:200px;object-fit:cover;">`;
   }
 
+  // Determine current language from window.__i18n or localStorage or default 'en'
+  const currentLang = (window.__i18n && window.__i18n.lang) || localStorage.getItem('lang') || 'en';
+
+  // Parse localized fields
+  let titleObj = {};
+  let descObj = {};
+  try { titleObj = JSON.parse(house.title_json || '{}'); } catch (e) { }
+  try { descObj = JSON.parse(house.description_json || '{}'); } catch (e) { }
+
+  // Fallback chain: current lang -> en -> raw field
+  const title = titleObj[currentLang] || titleObj['en'] || house.title || '';
+  const description = descObj[currentLang] || descObj['en'] || house.description || '';
+
+  // Localized status and type
+  const typeKey = `type.${(house.type || 'house').toLowerCase()}`;
+  const typeLabel = t(typeKey, (house.type || 'House'));
+
+  const statusRaw = (house.status || 'available').toLowerCase();
+  let statusBadgeHtml = '';
+  // "sold property with small and red background for available samll and green background for pending properties small and orange background"
+  if (statusRaw === 'sold') {
+    statusBadgeHtml = `<span class="badge bg-danger ms-1" style="font-size: 0.7rem;">Sold</span>`;
+  } else if (statusRaw === 'pending') {
+    statusBadgeHtml = `<span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem;">Pending</span>`;
+  } else {
+    // Available - green
+    statusBadgeHtml = `<span class="badge bg-success ms-1" style="font-size: 0.7rem;">Available</span>`;
+  }
+
   return `<div class="col-md-6 col-lg-4">
-    <a class="card house-card h-100 position-relative text-decoration-none text-reset" data-id="${
-      house.id
-    }" href="property.html?id=${house.id}">
-      <button class="btn-fav" onclick="event.preventDefault(); event.stopPropagation(); toggleFavorite(${
-        house.id
-      })" title="Save to favorites">&#10084;</button>
+    <a class="card house-card h-100 position-relative text-decoration-none text-reset" data-id="${house.id}" href="property.html?id=${house.id}">
+      <div class="position-absolute top-0 start-0 m-2 z-2">
+         <span class="badge bg-primary fs-6 shadow-sm">${typeLabel}</span>
+      </div>
+      <button class="btn-fav" onclick="event.preventDefault(); event.stopPropagation(); toggleFavorite(${house.id})" title="Save to favorites">&#10084;</button>
       ${imageContent}
       <div class="card-body">
-        <h5 class="card-title">${safeText(house.title)}</h5>
-        <p class="card-text">${safeText(house.description).substring(
-          0,
-          60
-        )}...</p>
-        <div class="fw-bold text-primary mb-2">${formatPriceETB(
-          house.price
-        )}</div>
-        ${
-          house.square_meter
-            ? `<div class="mb-1"><span class="badge bg-secondary">${house.square_meter} m²</span></div>`
-            : ""
-        }
-        <div class="mb-2"><span class="badge bg-info">${safeText(
-          house.location || "N/A"
-        )}</span></div>
+        <div class="mb-1 d-flex align-items-center">
+             <h6 class="card-title mb-0 fw-bold text-uppercase text-primary" style="font-size: 0.9rem; letter-spacing: 0.05em;">${typeLabel}</h6>
+             ${statusBadgeHtml}
+        </div>
+        <h5 class="fw-bold mb-2" style="font-size: 1.1rem;">${safeText(title)}</h5>
+        <p class="card-text text-muted small">${safeText(description).substring(0, 60)}...</p>
+        <div class="fw-bold text-primary mb-2">${formatPriceETB(house.price)}</div>
+        ${house.square_meter ? `<div class="mb-1"><span class="badge bg-secondary">${house.square_meter} m²</span></div>` : ""}
+        <div class="mb-2"><span class="badge bg-info">${safeText(house.location || "N/A")}</span></div>
       </div>
     </a>
   </div>`;
 }
+
+// Add language change listener
+document.addEventListener('i18n:loaded', function () {
+  // Re-render houses with new language
+  if (allHouses.length > 0) {
+    renderHouses(allHouses);
+  }
+});
 
 function loadHouses(silent = false) {
   if (!silent) showLoading();
@@ -202,8 +229,11 @@ function renderHouses(houses) {
     ...h,
     type: (h.type || "house").toLowerCase(),
   }));
-  // Filter to only show available properties on main site
-  let filtered = normalized.filter((h) => (h.status || "available").toLowerCase() === "available");
+  // Filter to only show available and sold properties on main site
+  let filtered = normalized.filter((h) => {
+    const s = (h.status || "available").toLowerCase();
+    return s === "available" || s === "sold";
+  });
   if (activeTypeFilter) {
     if (activeTypeFilter === "properties") {
       filtered = filtered.filter((h) =>
@@ -326,8 +356,8 @@ window.showHouseDetails = async function (id) {
     house.images && house.images.length
       ? house.images
       : house.image
-      ? [house.image]
-      : ["noimage.png"];
+        ? [house.image]
+        : ["noimage.png"];
   const hasMultipleImages = images.length > 1;
   let galleryContent;
   if (hasMultipleImages) {
@@ -335,8 +365,7 @@ window.showHouseDetails = async function (id) {
     const indicators = images
       .map(
         (_, index) =>
-          `<button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${index}" ${
-            index === 0 ? 'class="active" aria-current="true"' : ""
+          `<button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${index}" ${index === 0 ? 'class="active" aria-current="true"' : ""
           } aria-label="Slide ${index + 1}"></button>`
       )
       .join("");
@@ -344,8 +373,7 @@ window.showHouseDetails = async function (id) {
       .map(
         (img, index) =>
           `<div class="carousel-item ${index === 0 ? "active" : ""}">
-        <img src="/uploads/${img}" class="d-block w-100 rounded" alt="House image ${
-            index + 1
+        <img src="/uploads/${img}" class="d-block w-100 rounded" alt="House image ${index + 1
           }" style="height:300px;object-fit:cover;">
       </div>`
       )
@@ -380,16 +408,15 @@ window.showHouseDetails = async function (id) {
         <h3 class="mb-2">${safeText(house.title)}</h3>
         <div class="text-primary h4 mb-3">${formatPriceETB(house.price)}</div>
         <p class="mb-2 text-muted"><i class="fa-solid fa-location-dot me-2"></i>${safeText(
-          house.location || house.city || "N/A"
-        )}</p>
+    house.location || house.city || "N/A"
+  )}</p>
         <ul class="list-unstyled mb-3">
           <li><strong>Type:</strong> ${safeText(house.type || "House")}</li>
-          <li><strong>Bedrooms:</strong> ${
-            house.bedrooms != null ? house.bedrooms : "N/A"
-          }</li>
+          <li><strong>Bedrooms:</strong> ${house.bedrooms != null ? house.bedrooms : "N/A"
+    }</li>
           <li><strong>Status:</strong> ${safeText(
-            house.status || "available"
-          )}</li>
+      house.status || "available"
+    )}</li>
         </ul>
         <h6 class="text-uppercase text-muted">Description</h6>
         <p>${safeText(house.description)}</p>
@@ -409,8 +436,8 @@ function createAdminHouseCard(house) {
     house.images && house.images.length
       ? house.images
       : house.image
-      ? [house.image]
-      : ["noimage.png"];
+        ? [house.image]
+        : ["noimage.png"];
   const img = images[0];
   return `<div class="col-md-6 col-lg-4">
     <div class="card h-100" data-house-id="${house.id}">
@@ -418,20 +445,19 @@ function createAdminHouseCard(house) {
       <div class="card-body">
         <h5 class="card-title">${safeText(house.title)}</h5>
         <p class="card-text">${safeText(house.description).substring(
-          0,
-          60
-        )}...</p>
+    0,
+    60
+  )}...</p>
         <div class="fw-bold text-primary mb-2">${formatPriceETB(
-          house.price
-        )}</div>
-        ${
-          house.square_meter
-            ? `<div class="mb-1"><span class="badge bg-secondary">${house.square_meter} m²</span></div>`
-            : ""
-        }
+    house.price
+  )}</div>
+        ${house.square_meter
+      ? `<div class="mb-1"><span class="badge bg-secondary">${house.square_meter} m²</span></div>`
+      : ""
+    }
         <div><span class="badge bg-info">${safeText(
-          house.location || "N/A"
-        )}</span></div>
+      house.location || "N/A"
+    )}</span></div>
         <div class="d-flex gap-2 mt-2">
           <button class="btn btn-outline-primary btn-sm flex-fill edit-house-btn" data-id="${house.id}">Edit</button>
           <button class="btn btn-danger btn-sm flex-fill delete-house-btn" data-id="${house.id}">Delete</button>
@@ -450,7 +476,7 @@ function updateAdminStatistics(houses) {
     (h) => (h.status || "available").toLowerCase() === "pending"
   ).length;
   const rented = houses.filter(
-    (h) => (h.status || "available").toLowerCase() === "rented"
+    (h) => (h.status || "available").toLowerCase() === "sold"
   ).length;
 
   document.getElementById("total-listings").textContent = total;
@@ -624,7 +650,7 @@ async function deleteHouse(id) {
 
 // Add event listeners for admin buttons
 if (document.getElementById('admin-houses-list')) {
-  document.getElementById('admin-houses-list').addEventListener('click', function(e) {
+  document.getElementById('admin-houses-list').addEventListener('click', function (e) {
     if (e.target.classList.contains('edit-house-btn')) {
       const id = e.target.dataset.id;
       showEditModal(id);
@@ -662,45 +688,42 @@ async function loadBrokerRequests() {
           r.status === "approved"
             ? '<span class="badge bg-success">Approved</span>'
             : r.status === "rejected"
-            ? '<span class="badge bg-danger">Rejected</span>'
-            : '<span class="badge bg-warning text-dark">Pending</span>';
+              ? '<span class="badge bg-danger">Rejected</span>'
+              : '<span class="badge bg-warning text-dark">Pending</span>';
         const typeLabel = r.type || "house";
         const imgs = r.images || [];
         const imgHtml = imgs.length
           ? `<img src="/uploads/${imgs[0]}" class="img-fluid rounded mb-2" style="max-height:160px;object-fit:cover;" alt="Listing image">`
           : "";
         return `<div class="col-md-6">
-        <div class="card h-100" style="cursor: pointer;" onclick="showBrokerRequestDetails(${
-          r.id
-        })">
+        <div class="card h-100" style="cursor: pointer;" onclick="showBrokerRequestDetails(${r.id
+          })">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <h6 class="mb-0">${safeText(r.title)}</h6>
               ${statusBadge}
             </div>
             <div class="small text-muted mb-1">${typeLabel} • ${safeText(
-          r.location || ""
-        )}</div>
+            r.location || ""
+          )}</div>
             <div class="fw-bold text-primary mb-2">${formatPriceETB(
-              r.price
-            )}</div>
-            ${
-              r.square_meter
-                ? `<div class="mb-1"><span class="badge bg-secondary">${r.square_meter} m²</span></div>`
-                : ""
-            }
+            r.price
+          )}</div>
+            ${r.square_meter
+            ? `<div class="mb-1"><span class="badge bg-secondary">${r.square_meter} m²</span></div>`
+            : ""
+          }
             ${imgHtml}
             <p class="small mb-2">${safeText(
-              (r.description || "").substring(0, 140)
-            )}...</p>
+            (r.description || "").substring(0, 140)
+          )}...</p>
             <div class="small mb-2">
               <strong>Broker:</strong> ${safeText(r.broker_name || "")}<br>
               <strong>Email:</strong> ${safeText(r.broker_email || "")}<br>
               <strong>Phone:</strong> ${safeText(r.broker_phone || "")}
             </div>
-            <div class="small text-muted mb-2">${
-              r.admin_note ? "Admin: " + safeText(r.admin_note) : ""
-            }</div>
+            <div class="small text-muted mb-2">${r.admin_note ? "Admin: " + safeText(r.admin_note) : ""
+          }</div>
           </div>
         </div>
       </div>`;
@@ -725,8 +748,8 @@ async function showBrokerRequestDetails(id) {
       request.status === "approved"
         ? '<span class="badge bg-success">Approved</span>'
         : request.status === "rejected"
-        ? '<span class="badge bg-danger">Rejected</span>'
-        : '<span class="badge bg-warning text-dark">Pending</span>';
+          ? '<span class="badge bg-danger">Rejected</span>'
+          : '<span class="badge bg-warning text-dark">Pending</span>';
 
     const imgs = request.images || [];
     const carouselHtml = imgs.length
@@ -734,26 +757,24 @@ async function showBrokerRequestDetails(id) {
       <div id="request-carousel" class="carousel slide mb-3" data-bs-ride="carousel">
         <div class="carousel-indicators">
           ${imgs
-            .map(
-              (_, i) =>
-                `<button type="button" data-bs-target="#request-carousel" data-bs-slide-to="${i}" ${
-                  i === 0 ? 'class="active"' : ""
-                }></button>`
-            )
-            .join("")}
+        .map(
+          (_, i) =>
+            `<button type="button" data-bs-target="#request-carousel" data-bs-slide-to="${i}" ${i === 0 ? 'class="active"' : ""
+            }></button>`
+        )
+        .join("")}
         </div>
         <div class="carousel-inner">
           ${imgs
-            .map(
-              (img, i) => `
+        .map(
+          (img, i) => `
             <div class="carousel-item ${i === 0 ? "active" : ""}">
-              <img src="/uploads/${img}" class="d-block w-100" style="max-height:400px;object-fit:cover;" alt="Request image ${
-                i + 1
-              }">
+              <img src="/uploads/${img}" class="d-block w-100" style="max-height:400px;object-fit:cover;" alt="Request image ${i + 1
+            }">
             </div>
           `
-            )
-            .join("")}
+        )
+        .join("")}
         </div>
         <button class="carousel-control-prev" type="button" data-bs-target="#request-carousel" data-bs-slide="prev">
           <span class="carousel-control-prev-icon"></span>
@@ -774,36 +795,33 @@ async function showBrokerRequestDetails(id) {
           <p><strong>Location:</strong> ${safeText(request.location || "")}</p>
           <p><strong>City:</strong> ${safeText(request.city || "")}</p>
           <p><strong>Description:</strong> ${safeText(
-            request.description || ""
-          )}</p>
-          ${
-            request.square_meter
-              ? `<p><strong>Square Meter:</strong> ${request.square_meter}</p>`
-              : ""
-          }
-          ${
-            request.bedrooms
-              ? `<p><strong>Bedrooms:</strong> ${request.bedrooms}</p>`
-              : ""
-          }
+      request.description || ""
+    )}</p>
+          ${request.square_meter
+        ? `<p><strong>Square Meter:</strong> ${request.square_meter}</p>`
+        : ""
+      }
+          ${request.bedrooms
+        ? `<p><strong>Bedrooms:</strong> ${request.bedrooms}</p>`
+        : ""
+      }
           <p><strong>Status:</strong> ${statusBadge}</p>
-          ${
-            request.admin_note
-              ? `<p><strong>Admin Note:</strong> ${safeText(
-                  request.admin_note
-                )}</p>`
-              : ""
-          }
+          ${request.admin_note
+        ? `<p><strong>Admin Note:</strong> ${safeText(
+          request.admin_note
+        )}</p>`
+        : ""
+      }
         </div>
         <div class="col-md-4">
           <h6>Broker Info</h6>
           <p><strong>Name:</strong> ${safeText(request.contact_name || "")}</p>
           <p><strong>Email:</strong> ${safeText(
-            request.contact_email || ""
-          )}</p>
+        request.contact_email || ""
+      )}</p>
           <p><strong>Phone:</strong> ${safeText(
-            request.contact_phone || ""
-          )}</p>
+        request.contact_phone || ""
+      )}</p>
         </div>
       </div>
       ${carouselHtml}
@@ -814,6 +832,16 @@ async function showBrokerRequestDetails(id) {
       adminApproveBrokerRequest(id);
     document.getElementById("modal-reject-btn").onclick = () =>
       adminRejectBrokerRequest(id);
+
+    // Hide approve button if already approved
+    const approveBtn = document.getElementById("modal-approve-btn");
+    if (approveBtn) {
+      if (request.status === 'approved') {
+        approveBtn.style.display = 'none';
+      } else {
+        approveBtn.style.display = 'inline-block';
+      }
+    }
 
     const modal = new bootstrap.Modal(
       document.getElementById("brokerRequestModal")
@@ -847,6 +875,14 @@ async function adminDecisionBrokerRequest(id, action) {
     } else {
       showToast("Broker request rejected.");
     }
+
+    // Auto-close modal
+    const modalEl = document.getElementById("brokerRequestModal");
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }
+
     loadBrokerRequests();
   } catch (e) {
     console.error("Decision error:", e);

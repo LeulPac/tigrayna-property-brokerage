@@ -681,12 +681,104 @@ app.post(
   }
 );
 
+// Broker Edit House (for approved/published houses)
+app.put("/api/broker/houses/:id", async (req, res) => {
+  try {
+    const broker = await authBroker(req);
+    if (!broker) return res.status(401).json({ error: "Not authorized" });
+    const houseId = parseInt(req.params.id, 10);
+
+    // Check ownership: House ID must appear in broker_requests for this broker
+    const request = await get(
+      `SELECT * FROM broker_requests WHERE broker_id = ? AND created_house_id = ?`,
+      [broker.id, houseId]
+    );
+    if (!request) return res.status(403).json({ error: "Not authorized to edit this property." });
+
+    const {
+      title, description, price, square_meter, bedrooms, location, city, type, floor,
+      amenities_json, title_am, title_ti, description_am, description_ti
+    } = req.body;
+
+    const title_json = JSON.stringify({
+      en: title || "",
+      am: title_am || "",
+      ti: title_ti || ""
+    });
+    const description_json = JSON.stringify({
+      en: description || "",
+      am: description_am || "",
+      ti: description_ti || ""
+    });
+
+    await run(`UPDATE houses SET 
+        title = ?, description = ?, price = ?, square_meter = ?, bedrooms = ?, 
+        location = ?, city = ?, type = ?, floor = ?, amenities_json = ?,
+        title_json = ?, description_json = ?
+        WHERE id = ?`,
+      [
+        title, description, Number(price), square_meter || null, bedrooms || null,
+        location || null, city || null, type || 'house', floor || null, amenities_json,
+        title_json, description_json,
+        houseId
+      ]
+    );
+
+    // Also update the fields in broker_requests so they match
+    await run(`UPDATE broker_requests SET
+        title = ?, description = ?, price = ?, square_meter = ?, bedrooms = ?,
+        location = ?, city = ?, type = ?, floor = ?, amenities_json = ?,
+        title_am = ?, title_ti = ?, description_am = ?, description_ti = ?
+        WHERE id = ?`,
+      [
+        title, description, Number(price), square_meter || null, bedrooms || null,
+        location || null, city || null, type || 'house', floor || null, amenities_json,
+        title_am || null, title_ti || null, description_am || null, description_ti || null,
+        request.id
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("PUT /api/broker/houses/:id error:", e);
+    res.status(500).json({ error: "Failed to update property." });
+  }
+});
+
+// Broker Delete House
+app.delete("/api/broker/houses/:id", async (req, res) => {
+  try {
+    const broker = await authBroker(req);
+    if (!broker) return res.status(401).json({ error: "Not authorized" });
+    const houseId = parseInt(req.params.id, 10);
+
+    // Check ownership
+    const request = await get(
+      `SELECT * FROM broker_requests WHERE broker_id = ? AND created_house_id = ?`,
+      [broker.id, houseId]
+    );
+    if (!request) return res.status(403).json({ error: "Not authorized to delete this property." });
+
+    // Delete house images and house
+    await run(`DELETE FROM house_images WHERE house_id = ?`, [houseId]);
+    await run(`DELETE FROM houses WHERE id = ?`, [houseId]);
+
+    // Update request to deleted status so it doesn't show as approved anymore
+    await run(`UPDATE broker_requests SET status = 'deleted', created_house_id = NULL WHERE id = ?`, [request.id]);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("DELETE /api/broker/houses/:id error:", e);
+    res.status(500).json({ error: "Failed to delete property." });
+  }
+});
+
 app.get("/api/broker-requests/mine", async (req, res) => {
   try {
     const broker = await authBroker(req);
     if (!broker) return res.status(401).json({ error: "Not authorized" });
     const rows = await all(
-      `SELECT * FROM broker_requests WHERE broker_id = ? ORDER BY datetime(created_at) DESC`,
+      `SELECT * FROM broker_requests WHERE broker_id = ? AND status != 'deleted' ORDER BY datetime(created_at) DESC`,
       [broker.id]
     );
     res.json(rows);
@@ -702,6 +794,7 @@ app.get("/api/admin/broker-requests", async (req, res) => {
       await all(`SELECT br.*, b.name as broker_name, b.email as broker_email, b.phone as broker_phone
                             FROM broker_requests br
                             JOIN brokers b ON br.broker_id = b.id
+                            WHERE br.status != 'deleted'
                             ORDER BY datetime(br.created_at) DESC`);
     const reqIds = rows.map((r) => r.id);
     let images = [];
@@ -743,6 +836,9 @@ app.post("/api/admin/broker-requests/:id/decision", async (req, res) => {
       return res.json({ success: true });
     }
     if (action === "approve") {
+      if (request.status === 'approved') {
+        return res.status(400).json({ error: "Request is already approved." });
+      }
       const imgs = await all(
         `SELECT filename, position FROM broker_request_images WHERE request_id = ? ORDER BY position ASC, id ASC`,
         [id]
@@ -755,7 +851,7 @@ app.post("/api/admin/broker-requests/:id/decision", async (req, res) => {
       try {
         if (request.amenities_json)
           amenities = JSON.parse(request.amenities_json);
-      } catch (e) {}
+      } catch (e) { }
 
       const admin = {
         name: request.contact_name || "Broker Listing",
@@ -814,8 +910,8 @@ app.post("/api/admin/broker-requests/:id/decision", async (req, res) => {
         );
       }
       await run(
-        `UPDATE broker_requests SET status = 'approved', admin_note = ? WHERE id = ?`,
-        [note || null, id]
+        `UPDATE broker_requests SET status = 'approved', admin_note = ?, created_house_id = ? WHERE id = ?`,
+        [note || null, houseId, id]
       );
       return res.json({ success: true, houseId });
     }
