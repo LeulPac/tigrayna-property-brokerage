@@ -97,6 +97,6 @@ A property brokerage website where customers can browse available properties for
 - `status` (pending/approved/rejected)
 ## Languages (i18n)
 - Navbar switcher supports English (EN), Amharic (AM), and Tigrinya (TI).
-- Files: `public/i18n/en.json`, `public/i18n/am.json`, `public/i18n/ti.json`.
-- Loader: `public/i18n.js` (persists choice in localStorage).
+- Files: `front-end/i18n/en.json`, `front-end/i18n/am.json`, `front-end/i18n/ti.json`.
+- Loader: `front-end/i18n.js` (persists choice in localStorage).
 - To translate new text, wrap it with `data-i18n="key"` or use `data-i18n-placeholder` for placeholders and add the key to each JSON.
