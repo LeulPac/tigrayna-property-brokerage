@@ -11,17 +11,22 @@ A property brokerage website where customers can browse available properties for
 
 ## Project Structure
 ```text
-├── public/                 # Frontend (HTML, CSS, JS, Locales)
+├── front-end/              # Frontend (HTML, CSS, JS, Locales)
 │   ├── index.html          # Customer Home Page
 │   ├── admin.html          # Admin Dashboard
 │   ├── broker.html         # Broker Portal
+│   ├── property.html       # Property Details Page
 │   ├── script.js           # Main Frontend Logic
 │   ├── style.css           # Global Styles
-│   └── uploads/            # (Served static files)
-├── server.js               # Backend (Node.js, Express server & API)
-├── database.sqlite         # SQLite Database (Stores houses, brokers, requests)
-├── uploads/                # Directory for uploaded property images
-└── package.json            # Project dependencies and scripts
+│   ├── i18n.js             # Internationalization Loader
+│   └── i18n/               # Translation Files (en.json, am.json, ti.json)
+├── back-end/               # Backend (Node.js, Express server & API)
+│   ├── server.js           # Express Server & API Routes
+│   └── uploads/            # Uploaded Property Images
+├── database/               # Database Storage
+│   └── database.sqlite     # SQLite Database (Houses, Brokers, Requests)
+├── package.json            # Project Dependencies and Scripts
+└── README.md               # Project Documentation
 ```
 
 ## Tech Stack
@@ -44,8 +49,15 @@ A property brokerage website where customers can browse available properties for
 
 3. **Access the sites:**
    - **Customer site:** [http://localhost:3000/index.html](http://localhost:3000/index.html)
-   - **Admin site:** [http://localhost:3000/admin.html](http://localhost:3000/admin.html)
+   - if you can't install the files you can visit the site 
 
+   https://tigray-property-brokerage.onrender.com
+
+   - **Admin site:** [http://localhost:3000/admin.html](http://localhost:3000/admin.html)
+   - and the following link is for the admin panel
+
+   https://tigray-property-brokerage.onrender.com/admin.html
+   
    - use "admin2905" as a password to acccess the admin panel.
 
    - **Broker site:** [http://localhost:3000/broker.html](http://localhost:3000/broker.html) or by the link broker dashboard on the customer site.
